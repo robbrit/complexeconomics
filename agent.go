@@ -45,7 +45,7 @@ func (a *agent) onUnfilled(g Good, side Side, p Price, s Size, sig MarketSignal)
 
 // Act is called when it is the agent's turn to act.
 func (a *agent) act() {
-	for i, p := range a.prices {
+	for i := range a.prices {
 		g := Good(i)
 		dir := -1
 		if a.strategy.IsBuyer(g) {

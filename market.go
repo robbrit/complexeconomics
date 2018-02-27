@@ -41,10 +41,13 @@ type Market interface {
 	Clear()
 }
 
+type sequenceGenerator func(int) []int
+
 type marketImpl struct {
 	// The type of good that is sold in this market.
 	good   Good
-	orders *[]MarketOrder
+	orders []*MarketOrder
+	seq    sequenceGenerator
 }
 
 // A MarketAgent is an agent that trades in the market, and can be notified of
@@ -67,7 +70,7 @@ type MarketOrder struct {
 
 // NewMarket constructs a new market for a given good.
 func NewMarket(g Good) Market {
-	return &marketImpl{g}
+	return &marketImpl{g, nil, rand.Perm}
 }
 
 // Good gives the good that is traded in this market.
@@ -83,20 +86,22 @@ func (m *marketImpl) Post(o *MarketOrder) {
 // are not. Notifications are sent to the owners of each order.
 func (m *marketImpl) Clear() {
 	// Go through orders in random order.
-	bids := &OrderMaxHeap{}
-	offers := &OrderMinHeap{}
+	bids := orderMaxHeap{}
+	offers := orderMinHeap{}
 	heap.Init(&bids)
 	heap.Init(&offers)
 
 	type fill struct {
 		buyOwner  MarketAgent
 		sellOwner MarketAgent
+		buyPrice  Price
+		sellPrice Price
 		price     Price
 		size      Size
 	}
 
 	fills := []*fill{}
-	for _, i := range rand.Perm(len(m.orders)) {
+	for _, i := range m.seq(len(m.orders)) {
 		order := m.orders[i]
 
 		switch order.Side {
@@ -111,13 +116,19 @@ func (m *marketImpl) Clear() {
 			for len(offers) > 0 && order.Price >= offers[0].Price && size > 0 {
 				if offers[0].Size <= size {
 					sell := heap.Pop(&offers).(*MarketOrder)
-					fills = append(fills, &fill{order.Owner, sell.Owner, sell.Price, sell.Size})
+					fills = append(fills, &fill{order.Owner, sell.Owner, order.Price, sell.Price, sell.Price, sell.Size})
 					size -= sell.Size
 				} else {
-					fills = append(fills, &fill{order.Owner, sell.Owner, sell.Price, size})
+					sell := offers[0]
+					fills = append(fills, &fill{order.Owner, sell.Owner, order.Price, sell.Price, sell.Price, size})
 					offers[0].Size -= size
 					size = 0
 				}
+			}
+
+			if size > 0 {
+				order.Size = size
+				heap.Push(&bids, order)
 			}
 		case SellOrder:
 			if len(bids) == 0 || order.Price > bids[0].Price {
@@ -130,13 +141,19 @@ func (m *marketImpl) Clear() {
 			for len(bids) > 0 && order.Price <= bids[0].Price && size > 0 {
 				if bids[0].Size <= size {
 					buy := heap.Pop(&bids).(*MarketOrder)
-					fills = append(fills, &fill{buy.Owner, order.Owner, buy.Price, buy.Size})
+					fills = append(fills, &fill{buy.Owner, order.Owner, buy.Price, order.Price, buy.Price, buy.Size})
 					size -= buy.Size
 				} else {
-					fills = append(fills, &fill{buy.Owner, order.Owner, buy.Price, size})
+					buy := bids[0]
+					fills = append(fills, &fill{buy.Owner, order.Owner, buy.Price, order.Price, buy.Price, size})
 					bids[0].Size -= size
 					size = 0
 				}
+			}
+
+			if size > 0 {
+				order.Size = size
+				heap.Push(&offers, order)
 			}
 		}
 	}
@@ -144,34 +161,38 @@ func (m *marketImpl) Clear() {
 	// Market is cleared now, send notifications to all agents.
 	// Anything that was filled gets a fill notification.
 	for _, f := range fills {
-		p := f.Price
+		p := f.price
 		bs := SignalFair
-		if f.buy.Price > p {
+		if f.buyPrice > p {
 			bs = SignalStrong
 		}
-		ss := SignalFail
-		if f.sell.Price < p {
+		ss := SignalFair
+		if f.sellPrice < p {
 			ss = SignalStrong
 		}
-		p.buyOwner.OnFill(m.good, BuyOrder, p, f.Size, bs)
-		p.sellOwner.OnFill(m.good, SellOrder, p, f.Size, ss)
+		f.buyOwner.OnFill(m.good, BuyOrder, p, f.size, bs)
+		f.sellOwner.OnFill(m.good, SellOrder, p, f.size, ss)
 	}
 
 	// Anything remaining did not get filled, and gets an unfilled notification
-	bid := bids[0].Price
-	ask := offers[0].Price
-	for _, o := range bids {
-		s := SignalWeak
-		if o.Price == bid {
-			s = SignalFair
+	if len(bids) > 0 {
+		bid := bids[0].Price
+		for _, o := range bids {
+			s := SignalWeak
+			if o.Price == bid {
+				s = SignalFair
+			}
+			o.Owner.OnUnfilled(m.good, BuyOrder, o.Price, o.Size, s)
 		}
-		o.Owner.OnUnfilled(m.good, BuyOrder, o.Price, o.Size, s)
 	}
-	for _, o := range offers {
-		s := SignalWeak
-		if o.Price == ask {
-			s = SignalFair
+	if len(offers) > 0 {
+		ask := offers[0].Price
+		for _, o := range offers {
+			s := SignalWeak
+			if o.Price == ask {
+				s = SignalFair
+			}
+			o.Owner.OnUnfilled(m.good, SellOrder, o.Price, o.Size, s)
 		}
-		o.Owner.OnUnfilled(m.good, SellOrder, o.Price, o.Size, s)
 	}
 }
