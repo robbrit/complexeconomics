@@ -195,4 +195,7 @@ func (m *marketImpl) Clear() {
 			o.Owner.OnUnfilled(m.good, SellOrder, o.Price, o.Size, s)
 		}
 	}
+
+	// Reset the market every cycle.
+	m.orders = nil
 }
