@@ -8,6 +8,7 @@ type AgentStrategy interface {
 }
 
 type agent struct {
+	world      World
 	inventory  []Size
 	cash       Price
 	lastSignal []MarketSignal
@@ -16,8 +17,9 @@ type agent struct {
 	strategy   AgentStrategy
 }
 
-func newAgent(adjust Price, as AgentStrategy) *agent {
+func newAgent(w World, adjust Price, as AgentStrategy) *agent {
 	return &agent{
+		world:      w,
 		inventory:  make([]Size, NumGoods),
 		cash:       0,
 		lastSignal: make([]MarketSignal, NumGoods),
@@ -28,7 +30,7 @@ func newAgent(adjust Price, as AgentStrategy) *agent {
 }
 
 func (a *agent) onFill(g Good, side Side, p Price, s Size, sig MarketSignal) {
-	if side == BuyOrder {
+	if side == Buy {
 		a.inventory[g] += s
 		a.cash -= Price(s) * p
 	} else {

@@ -8,12 +8,12 @@ type Individual struct {
 }
 
 // NewIndividual constructs a new individual.
-func NewIndividual(initialShares []Size, adjust Price) *Individual {
+func NewIndividual(w World, initialShares []Size, adjust Price) *Individual {
 	i := &Individual{
 		shares: initialShares,
 	}
 
-	i.agent = *newAgent(adjust, i)
+	i.agent = *newAgent(w, adjust, i)
 	return i
 }
 

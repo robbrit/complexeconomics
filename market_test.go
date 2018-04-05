@@ -45,10 +45,10 @@ func TestMarket(t *testing.T) {
 	m := NewMarket(Meat).(*marketImpl)
 	m.seq = func(int) []int { return []int{0, 1, 2, 3} }
 
-	m.Post(&MarketOrder{10.0, 100, SellOrder, s})
-	m.Post(&MarketOrder{12.0, 10, BuyOrder, b1})
-	m.Post(&MarketOrder{10.0, 200, BuyOrder, b2})
-	m.Post(&MarketOrder{8.0, 1000, BuyOrder, b3})
+	m.Post(&MarketOrder{10.0, 100, Sell, s})
+	m.Post(&MarketOrder{12.0, 10, Buy, b1})
+	m.Post(&MarketOrder{10.0, 200, Buy, b2})
+	m.Post(&MarketOrder{8.0, 1000, Buy, b3})
 
 	m.Clear()
 
@@ -60,23 +60,23 @@ func TestMarket(t *testing.T) {
 		{
 			"high price should get a strong signal",
 			b1,
-			&fakeAgent{Meat, 10.0, 10, BuyOrder, SignalStrong, 0, 0.0, 0, 0, 0},
+			&fakeAgent{Meat, 10.0, 10, Buy, SignalStrong, 0, 0.0, 0, 0, 0},
 		},
 		{
 			"mid price should get a fair signal",
 			b2,
-			&fakeAgent{Meat, 10.0, 90, BuyOrder, SignalFair,
-				Meat, 10.0, 110, BuyOrder, SignalFair},
+			&fakeAgent{Meat, 10.0, 90, Buy, SignalFair,
+				Meat, 10.0, 110, Buy, SignalFair},
 		},
 		{
 			"low price should get a weak signal",
 			b3,
-			&fakeAgent{0, 0.0, 0, 0, 0, Meat, 8.0, 1000, BuyOrder, SignalWeak},
+			&fakeAgent{0, 0.0, 0, 0, 0, Meat, 8.0, 1000, Buy, SignalWeak},
 		},
 		{
 			"sell should have latest fill values",
 			s,
-			&fakeAgent{Meat, 10.0, 90, SellOrder, SignalFair, 0, 0.0, 0, 0, 0},
+			&fakeAgent{Meat, 10.0, 90, Sell, SignalFair, 0, 0.0, 0, 0, 0},
 		},
 	} {
 		if *test.agent != *test.wantAgent {

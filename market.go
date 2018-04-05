@@ -28,10 +28,10 @@ const (
 type Side uint8
 
 const (
-	// BuyOrder is an order to buy things.
-	BuyOrder Side = iota
-	// SellOrder is an order to sell things.
-	SellOrder
+	// Buy is an order to buy things.
+	Buy Side = iota
+	// Sell is an order to sell things.
+	Sell
 )
 
 // Market represents a market for buying and selling goods.
@@ -105,7 +105,7 @@ func (m *marketImpl) Clear() {
 		order := m.orders[i]
 
 		switch order.Side {
-		case BuyOrder:
+		case Buy:
 			if len(offers) == 0 || order.Price < offers[0].Price {
 				heap.Push(&bids, order)
 				continue
@@ -130,7 +130,7 @@ func (m *marketImpl) Clear() {
 				order.Size = size
 				heap.Push(&bids, order)
 			}
-		case SellOrder:
+		case Sell:
 			if len(bids) == 0 || order.Price > bids[0].Price {
 				heap.Push(&offers, order)
 				continue
@@ -170,8 +170,8 @@ func (m *marketImpl) Clear() {
 		if f.sellPrice < p {
 			ss = SignalStrong
 		}
-		f.buyOwner.OnFill(m.good, BuyOrder, p, f.size, bs)
-		f.sellOwner.OnFill(m.good, SellOrder, p, f.size, ss)
+		f.buyOwner.OnFill(m.good, Buy, p, f.size, bs)
+		f.sellOwner.OnFill(m.good, Sell, p, f.size, ss)
 	}
 
 	// Anything remaining did not get filled, and gets an unfilled notification
@@ -182,7 +182,7 @@ func (m *marketImpl) Clear() {
 			if o.Price == bid {
 				s = SignalFair
 			}
-			o.Owner.OnUnfilled(m.good, BuyOrder, o.Price, o.Size, s)
+			o.Owner.OnUnfilled(m.good, Buy, o.Price, o.Size, s)
 		}
 	}
 	if len(offers) > 0 {
@@ -192,7 +192,7 @@ func (m *marketImpl) Clear() {
 			if o.Price == ask {
 				s = SignalFair
 			}
-			o.Owner.OnUnfilled(m.good, SellOrder, o.Price, o.Size, s)
+			o.Owner.OnUnfilled(m.good, Sell, o.Price, o.Size, s)
 		}
 	}
 
