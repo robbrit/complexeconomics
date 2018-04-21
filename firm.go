@@ -2,8 +2,11 @@ package econerra
 
 import (
 	"fmt"
+	"log"
 	"math"
 )
+
+var _ = log.Printf
 
 // FirmID is a unique identifier for a firm.
 type FirmID uint64
@@ -12,52 +15,105 @@ type FirmID uint64
 type Firm struct {
 	agent
 
-	id        FirmID
-	totShares Size
-	good      Good
+	id   FirmID
+	good Good
+}
+
+// FirmOptions are the arguments used to construct a firm.
+type FirmOptions struct {
+	AgentOptions
+
+	// ID is the unique identifier for the firm.
+	ID FirmID
+	// Good is the good that this firm produces.
+	Good Good
+	// InitInventory is the initial inventory that the firm has.
+	InitInventory Size
 }
 
 const (
-	// Technology modifier for production function.
-	tech = 10.0
 	// Exponent for C-D production.
 	labElast = 0.5
 )
 
+var (
+	// Technology modifier for production function.
+	tech = map[Good]float64{
+		Grain:      40.0,
+		Vegetables: 30.0,
+		Cotton:     30.0,
+		Meat:       8.0,
+		Beer:       10.0,
+		Clothing:   15.0,
+	}
+)
+
 // NewFirm constructs a new firm.
-func NewFirm(id FirmID, w World, totShares Size, adjust Price, good Good, initInv Size) (*Firm, error) {
-	if good == Labour {
+func NewFirm(w *World, opts FirmOptions) (*Firm, error) {
+	if opts.Good == Labour {
 		return nil, fmt.Errorf("firms can't produce labour")
 	}
 
 	f := &Firm{
-		id:        id,
-		totShares: totShares,
-		good:      good,
+		id:   opts.ID,
+		good: opts.Good,
 	}
 
-	f.agent = *newAgent(w, adjust, f)
+	f.agent = *newAgent(w, opts.AgentOptions, f)
 
-	f.inventory[good] = initInv
+	f.inventory[opts.Good] = opts.InitInventory
 
 	return f, nil
 }
 
+// produce produces whatever good this firm needs.
+func (f *Firm) produce() {
+	// Figure out how much we can produce based on the labour we got last round.
+	q := tech[f.good] * math.Pow(float64(f.inventory[Labour]), labElast)
+
+	// For each input good, see if we can produce q with that much.
+	for _, input := range inputGoods[f.good] {
+		maxQ := float64(f.inventory[input.g]) / float64(input.s)
+		if maxQ < q {
+			q = maxQ
+		}
+	}
+
+	// We now know how much we can produce. Add that much to our inventory, and
+	// reduce our input stock.
+	q = math.Floor(q)
+
+	f.inventory[f.good] += Size(q)
+	for _, input := range inputGoods[f.good] {
+		f.inventory[input.g] -= Size(q) * input.s
+	}
+}
+
 // Act causes the firm to make its decisions for this cycle.
 func (f *Firm) Act() {
+	t := tech[f.good]
 	f.agent.act()
+
+	// Based on what we had last round, produce goods for market.
+	log.Printf("%s: before: %v", f.good, f.inventory)
+	f.produce()
+	log.Printf("%s: after: %v", f.good, f.inventory)
+
+	// Reset any variables that should be reset.
+	f.inventory[Labour] = 0
 
 	sellPrice := f.prices[f.good]
 	sumInputPrices := 0.0
 
 	for _, in := range inputGoods[f.good] {
-		sumInputPrices += float64(f.prices[in.g]) * float64(in.s)
+		sumInputPrices += f.prices[in.g] * float64(in.s)
 	}
-	denom := tech * labElast * (float64(sellPrice) - sumInputPrices)
+	denom := t * labElast * (sellPrice - sumInputPrices)
 
 	// Post order of labour based on labour demand function.
-	lf := math.Pow(float64(f.prices[Labour])/denom, 1.0/(labElast-1.0))
+	lf := math.Pow(f.prices[Labour]/denom, 1.0/(labElast-1.0))
 	l := f.labour(lf)
+	log.Printf("%s: want %d workers", f.good, l)
 
 	f.world.Market(Labour).Post(&MarketOrder{
 		Price: f.prices[Labour],
@@ -68,7 +124,7 @@ func (f *Firm) Act() {
 
 	// Post orders for input goods based on input demand function.
 	for _, in := range inputGoods[f.good] {
-		ind := float64(in.s) * tech * math.Pow(float64(l), labElast)
+		ind := float64(in.s) * t * math.Pow(float64(l), labElast)
 		f.world.Market(in.g).Post(&MarketOrder{
 			Price: f.prices[in.g],
 			// The floor of the input demand always maximizes profit.
@@ -102,23 +158,23 @@ func (f *Firm) labour(l float64) Size {
 
 // profit returns the profit for a given labour level.
 func (f *Firm) profit(l float64) float64 {
-	ip := int64(0) // Total cost of inputs.
+	ip := 0.0 // Total cost of inputs.
 	for _, in := range inputGoods[f.good] {
-		ip += int64(f.prices[in.g]) * int64(in.s)
+		ip += float64(f.prices[in.g]) * float64(in.s)
 	}
-	p := int64(f.prices[f.good])
+	p := float64(f.prices[f.good])
 	w := float64(f.prices[Labour])
 	la := math.Pow(l, labElast)
-	return tech*la*float64(p-ip) - w*l
+	return tech[f.good]*la*(p-ip) - w*l
 }
 
 // OnFill is an implementation of MarketAgent.OnFill.
-func (f *Firm) OnFill(g Good, side Side, p Price, s Size, sig MarketSignal) {
+func (f *Firm) OnFill(g Good, side Side, p float64, s Size, sig MarketSignal) {
 	f.agent.onFill(g, side, p, s, sig)
 }
 
 // OnUnfilled is an implementation of MarketAgent.OnUnfilled.
-func (f *Firm) OnUnfilled(g Good, side Side, p Price, s Size, sig MarketSignal) {
+func (f *Firm) OnUnfilled(g Good, side Side, p float64, s Size, sig MarketSignal) {
 	f.agent.onUnfilled(g, side, p, s, sig)
 }
 

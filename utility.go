@@ -9,12 +9,14 @@ type substituteGroup []struct {
 	g Good
 	s float64
 }
+
 // A complementGroup contains a set of substitute groups, all goods in
 // substitute group i are complementary to goods in subsitute group j, i != j.
 type complementGroup []struct {
 	g substituteGroup
 	s float64
 }
+
 // A goodGroup divides goods into groups that are distinct from one another
 // with respect to substitutes.
 type goodGroup []struct {
@@ -23,7 +25,12 @@ type goodGroup []struct {
 }
 
 // UtilityGoods are goods that provide utility for individuals.
-var UtilityGoods = []Good{Vegetables, Meat, Beer, Clothing}
+var UtilityGoods = map[Good]bool{
+	Vegetables: true, Meat: true, Beer: true, Clothing: true,
+}
+
+// This value is used when calculating utility.
+var baselineGood = Vegetables
 
 var utilityGroups = goodGroup{
 	// Clothing Group
@@ -61,7 +68,7 @@ var utilityGroups = goodGroup{
 const (
 	compExp = -1.125 / 0.125
 	subsExp = 0.5
-	topExp = 0.5
+	topExp  = 0.5
 )
 
 func utility(q []float64) float64 {
@@ -73,9 +80,9 @@ func utility(q []float64) float64 {
 			for _, sg := range cg.g {
 				cs += sg.s * math.Pow(q[sg.g], subsExp)
 			}
-			gs += cg.s * math.Pow(cs, compExp / subsExp)
+			gs += cg.s * math.Pow(cs, compExp/subsExp)
 		}
-		u += g.s * math.Pow(gs, topExp / compExp)
+		u += g.s * math.Pow(gs, topExp/compExp)
 	}
 	return u
 }
