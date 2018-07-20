@@ -1,34 +1,35 @@
 package econerra
 
 import (
+	"math/rand"
 	"testing"
 )
 
 type fakeAgent struct {
-	fillGood   Good
-	fillPrice  Price
-	fillSize   Size
-	fillSide   Side
-	fillSignal MarketSignal
+	fillGood    Good
+	fillfloat64 float64
+	fillSize    Size
+	fillSide    Side
+	fillSignal  MarketSignal
 
-	unfilledGood   Good
-	unfilledPrice  Price
-	unfilledSize   Size
-	unfilledSide   Side
-	unfilledSignal MarketSignal
+	unfilledGood    Good
+	unfilledfloat64 float64
+	unfilledSize    Size
+	unfilledSide    Side
+	unfilledSignal  MarketSignal
 }
 
-func (fa *fakeAgent) OnFill(g Good, s Side, p Price, q Size, sig MarketSignal) {
+func (fa *fakeAgent) OnFill(g Good, s Side, p float64, q Size, sig MarketSignal) {
 	fa.fillGood = g
-	fa.fillPrice = p
+	fa.fillfloat64 = p
 	fa.fillSize = q
 	fa.fillSide = s
 	fa.fillSignal = sig
 }
 
-func (fa *fakeAgent) OnUnfilled(g Good, s Side, p Price, q Size, sig MarketSignal) {
+func (fa *fakeAgent) OnUnfilled(g Good, s Side, p float64, q Size, sig MarketSignal) {
 	fa.unfilledGood = g
-	fa.unfilledPrice = p
+	fa.unfilledfloat64 = p
 	fa.unfilledSize = q
 	fa.unfilledSide = s
 	fa.unfilledSignal = sig
@@ -42,8 +43,11 @@ func TestMarket(t *testing.T) {
 
 	s := &fakeAgent{}
 
-	m := NewMarket(Meat).(*marketImpl)
-	m.seq = func(int) []int { return []int{0, 1, 2, 3} }
+	w := NewWorld(WorldOptions{
+		Rand: rand.New(NewFakeRand([]int64{0, 1, 2, 3})),
+	})
+
+	m := NewMarket(w, Meat).(*marketImpl)
 
 	m.Post(&MarketOrder{10.0, 100, Sell, s})
 	m.Post(&MarketOrder{12.0, 10, Buy, b1})

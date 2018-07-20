@@ -22,9 +22,9 @@ func TestUtilityGradient(t *testing.T) {
 	g := fd.Gradient(nil, utility, ones(), nil)
 
 	// Confirm that dU/dx > 0 for all x.
-	for _, i := range UtilityGoods {
-		if g[i] <= 0.0 {
-			t.Errorf("got dx %s = %.2f, want > 0", i, g[i])
+	for _, i := range UtilityGoodsList() {
+		if g[int(i)] <= 0.0 {
+			t.Errorf("got dx %s = %.2f, want > 0", i, g[int(i)])
 		}
 	}
 }
@@ -37,22 +37,22 @@ func TestUtilityHessian(t *testing.T) {
 	signMap := map[Good]map[Good]int{
 		Meat: {
 			Vegetables: -1,
-			Beer: 1,
+			Beer:       1,
 		},
 		Vegetables: {
 			Meat: -1,
 			Beer: 1,
 		},
 		Beer: {
-			Meat: 1,
+			Meat:       1,
 			Vegetables: 1,
 		},
 		// No need to put clothing, Hessian is always zero.
 		Clothing: {},
 	}
 
-	for _, i := range UtilityGoods {
-		for _, j := range UtilityGoods {
+	for _, i := range UtilityGoodsList() {
+		for _, j := range UtilityGoodsList() {
 			got := h.At(int(i), int(j))
 			var want int
 			if i == j {
@@ -69,12 +69,12 @@ func TestUtilityHessian(t *testing.T) {
 				gotsb := math.Signbit(got)
 				wantsb := math.Signbit(float64(want))
 				if gotsb != wantsb {
-					t.Errorf("got d2x %s/%s sign = %2f, want %2f", i, j, gotsb, wantsb)
+					t.Errorf("got d2x %s/%s sign = %t, want %t", i, j, gotsb, wantsb)
 				}
 			}
 		}
 	}
-	
+
 	// Lastly the Hessian should be negative semi-definite. We can check that by
 	// verifying that all the eigenvalues are <= 0.
 	l := mat.EigenSym{}

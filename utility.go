@@ -29,6 +29,16 @@ var UtilityGoods = map[Good]bool{
 	Vegetables: true, Meat: true, Beer: true, Clothing: true,
 }
 
+func UtilityGoodsList() []Good {
+	res := []Good{}
+	for g := 0; g < NumGoods; g++ {
+		if UtilityGoods[Good(g)] {
+			res = append(res, Good(g))
+		}
+	}
+	return res
+}
+
 // This value is used when calculating utility.
 var baselineGood = Vegetables
 

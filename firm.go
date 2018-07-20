@@ -17,6 +17,9 @@ type Firm struct {
 
 	id   FirmID
 	good Good
+
+	// Here are some metrics to track.
+	labourDemand Size
 }
 
 // FirmOptions are the arguments used to construct a firm.
@@ -95,9 +98,9 @@ func (f *Firm) Act() {
 	f.agent.act()
 
 	// Based on what we had last round, produce goods for market.
-	log.Printf("%s: before: %v", f.good, f.inventory)
+	log.Printf("%s: inv before: %v", f.good, f.inventory)
 	f.produce()
-	log.Printf("%s: after: %v", f.good, f.inventory)
+	log.Printf("%s: inv after: %v", f.good, f.inventory)
 
 	// Reset any variables that should be reset.
 	f.inventory[Labour] = 0
@@ -113,6 +116,7 @@ func (f *Firm) Act() {
 	// Post order of labour based on labour demand function.
 	lf := math.Pow(f.prices[Labour]/denom, 1.0/(labElast-1.0))
 	l := f.labour(lf)
+	f.labourDemand = l
 	log.Printf("%s: want %d workers", f.good, l)
 
 	f.world.Market(Labour).Post(&MarketOrder{
@@ -183,3 +187,6 @@ func (f *Firm) IsBuyer(g Good) bool {
 	// TODO - some firm types buy input goods
 	return g == Labour
 }
+
+// LabourDemand gives the amount of labour that the firm wanted this cycle.
+func (f *Firm) LabourDemand() Size { return f.labourDemand }
