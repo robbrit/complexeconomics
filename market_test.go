@@ -35,7 +35,7 @@ func (fa *fakeAgent) OnUnfilled(g Good, s Side, p float64, q Size, sig MarketSig
 	fa.unfilledSignal = sig
 }
 
-func TestMarket(t *testing.T) {
+func TestMarketSignals(t *testing.T) {
 	// Situation: one seller, three buyers - one buyer high, one medium, one low.
 	b1 := &fakeAgent{}
 	b2 := &fakeAgent{}
@@ -70,7 +70,7 @@ func TestMarket(t *testing.T) {
 			"mid price should get a fair signal",
 			b2,
 			&fakeAgent{Meat, 10.0, 90, Buy, SignalFair,
-				Meat, 10.0, 110, Buy, SignalFair},
+				Meat, 10.0, 110, Buy, SignalFairUnfilled},
 		},
 		{
 			"low price should get a weak signal",
@@ -84,7 +84,7 @@ func TestMarket(t *testing.T) {
 		},
 	} {
 		if *test.agent != *test.wantAgent {
-			t.Errorf("%s: got %v, want %v", test.desc, test.agent, test.wantAgent)
+			t.Errorf("%s: got %#v, want %#v", test.desc, test.agent, test.wantAgent)
 		}
 	}
 }

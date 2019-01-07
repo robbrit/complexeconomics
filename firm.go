@@ -98,9 +98,7 @@ func (f *Firm) Act() {
 	f.agent.act()
 
 	// Based on what we had last round, produce goods for market.
-	log.Printf("%s: inv before: %v", f.good, f.inventory)
 	f.produce()
-	log.Printf("%s: inv after: %v", f.good, f.inventory)
 
 	// Reset any variables that should be reset.
 	f.inventory[Labour] = 0
@@ -117,7 +115,6 @@ func (f *Firm) Act() {
 	lf := math.Pow(f.prices[Labour]/denom, 1.0/(labElast-1.0))
 	l := f.labour(lf)
 	f.labourDemand = l
-	log.Printf("%s: want %d workers", f.good, l)
 
 	f.world.Market(Labour).Post(&MarketOrder{
 		Price: f.prices[Labour],

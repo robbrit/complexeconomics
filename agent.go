@@ -79,7 +79,7 @@ func (a *agent) act() {
 		case SignalStrong:
 			// Too strong, adjust away from market
 			a.prices[i] -= a.adjust * dir
-		case SignalWeak:
+		case SignalWeak, SignalFairUnfilled:
 			// Too weak, adjust towards the market
 			a.prices[i] += a.adjust * dir
 		}

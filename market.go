@@ -2,12 +2,16 @@ package econerra
 
 import (
 	"container/heap"
+	"log"
 )
+
+var _ = log.Printf
 
 // Size represents an order size.
 type Size int64
 
 // A MarketSignal tells how "good" an order is.
+//go:generate stringer -type=MarketSignal
 type MarketSignal uint8
 
 const (
@@ -16,11 +20,14 @@ const (
 	// SignalFair means the order is roughly at market, and has a chance of being
 	// filled.
 	SignalFair
+	// SignalFairUnfilled means the order was not filled, but was at market.
+	SignalFairUnfilled
 	// SignalStrong means the order is very good, and will definitely get filled.
 	SignalStrong
 )
 
 // A Side represents the side that an order is on (buy vs. sell)
+//go:generate stringer -type=Side
 type Side uint8
 
 const (
@@ -40,8 +47,12 @@ type Market interface {
 	Clear()
 	// Get the highest price for unfilled buy orders.
 	Bid() float64
+	// Get the amount available at the bid price.
+	BidSize() Size
 	// Get the lowest price for unfilled sell orders.
 	Ask() float64
+	// Get the amount available at the ask price.
+	AskSize() Size
 	// Get the last trade price on this market.
 	Last() float64
 	// Get the volume of goods traded on this market in the last cycle.
@@ -51,12 +62,14 @@ type Market interface {
 type marketImpl struct {
 	world *World
 	// The type of good that is sold in this market.
-	good   Good
-	orders []*MarketOrder
-	bid    float64
-	ask    float64
-	last   float64
-	volume Size
+	good    Good
+	orders  []*MarketOrder
+	bid     float64
+	bidSize Size
+	ask     float64
+	askSize Size
+	last    float64
+	volume  Size
 }
 
 // A MarketAgent is an agent that trades in the market, and can be notified of
@@ -79,12 +92,14 @@ type MarketOrder struct {
 
 // NewMarket constructs a new market for a given good.
 func NewMarket(w *World, g Good) Market {
-	return &marketImpl{w, g, nil, 0.0, 0.0, 0.0, 0}
+	return &marketImpl{w, g, nil, 0.0, 0, 0.0, 0, 0.0, 0}
 }
 
 func (m *marketImpl) Good() Good    { return m.good }
 func (m *marketImpl) Bid() float64  { return m.bid }
+func (m *marketImpl) BidSize() Size { return m.bidSize }
 func (m *marketImpl) Ask() float64  { return m.ask }
+func (m *marketImpl) AskSize() Size { return m.askSize }
 func (m *marketImpl) Last() float64 { return m.last }
 func (m *marketImpl) Volume() Size  { return m.volume }
 
@@ -179,22 +194,25 @@ func (m *marketImpl) Clear() {
 	// Market is cleared now, send notifications to all agents.
 	// Anything remaining did not get filled, and gets an unfilled notification.
 	// Use this to calculate remaining bid/ask.
+	// All unfilled orders get a weak signal, unless they match the final bid/ask.
+	m.bid = 0.0
 	if len(bids) > 0 {
 		m.bid = bids[0].Price
 		for _, o := range bids {
 			s := SignalWeak
 			if o.Price == m.bid {
-				s = SignalFair
+				s = SignalFairUnfilled
 			}
 			o.Owner.OnUnfilled(m.good, Buy, o.Price, o.Size, s)
 		}
 	}
+	m.ask = 0.0
 	if len(offers) > 0 {
 		m.ask = offers[0].Price
 		for _, o := range offers {
 			s := SignalWeak
 			if o.Price == m.ask {
-				s = SignalFair
+				s = SignalFairUnfilled
 			}
 			o.Owner.OnUnfilled(m.good, Sell, o.Price, o.Size, s)
 		}
@@ -203,23 +221,39 @@ func (m *marketImpl) Clear() {
 	// Anything that was filled gets a fill notification.
 	m.volume = 0
 	for _, f := range fills {
-		p := f.price
 		bs := SignalFair
 		ss := SignalFair
 
-		// If the price above the ask, then the buyer was weak.
-		if p > m.ask {
-			bs = SignalWeak
-			ss = SignalStrong
-		} else if p < m.bid || m.bid == 0 {
+		if f.buyPrice > f.price {
 			bs = SignalStrong
 			ss = SignalWeak
+		} else if f.sellPrice > f.price {
+			bs = SignalWeak
+			ss = SignalStrong
 		}
-		f.buyOwner.OnFill(m.good, Buy, p, f.size, bs)
-		f.sellOwner.OnFill(m.good, Sell, p, f.size, ss)
+		f.buyOwner.OnFill(m.good, Buy, f.price, f.size, bs)
+		f.sellOwner.OnFill(m.good, Sell, f.price, f.size, ss)
 
 		m.volume += f.size
-		m.last = p
+		m.last = f.price
+	}
+
+	m.bidSize = 0
+	for _, order := range bids {
+		if order.Price == m.bid {
+			m.bidSize += order.Size
+		} else {
+			break
+		}
+	}
+
+	m.askSize = 0
+	for _, order := range offers {
+		if order.Price == m.ask {
+			m.askSize += order.Size
+		} else {
+			break
+		}
 	}
 
 	// Reset the market every cycle.
