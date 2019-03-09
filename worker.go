@@ -24,8 +24,8 @@ func (w *Worker) Act(p *Parameters) {
 	} else if w.unemployed {
 		// I was unemployed last round, undercut the market.
 		w.wage = p.LabourMarket.Low() - p.Increment
-	} else {
-		// I was employed last round, ask for a higher price.
+	} else if w.wage <= p.LabourMarket.High() {
+		// I was employed last round, ask for a higher price if I can.
 		w.wage += p.Increment
 	}
 

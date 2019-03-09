@@ -25,8 +25,8 @@ func (f *Firm) Act(p *Parameters) {
 		if f.workersHired < f.targetWorkers {
 			// Didn't hire enough people, offer a better wage than the market.
 			f.wage = p.LabourMarket.High() + p.Increment
-		} else {
-			// Got enough people, lower wages.
+		} else if f.wage >= p.LabourMarket.Low() {
+			// Got enough people, lower wages if possible
 			f.wage -= p.Increment
 		}
 	}
