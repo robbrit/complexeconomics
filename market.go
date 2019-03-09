@@ -1,34 +1,14 @@
 package econerra
 
-import (
-	"container/heap"
-	"log"
-)
-
-var _ = log.Printf
-
-// Size represents an order size.
-type Size int64
-
-// A MarketSignal tells how "good" an order is.
-//go:generate stringer -type=MarketSignal
-type MarketSignal uint8
-
-const (
-	// SignalWeak means that the order does not have much chance of being filled.
-	SignalWeak MarketSignal = iota
-	// SignalFair means the order is roughly at market, and has a chance of being
-	// filled.
-	SignalFair
-	// SignalFairUnfilled means the order was not filled, but was at market.
-	SignalFairUnfilled
-	// SignalStrong means the order is very good, and will definitely get filled.
-	SignalStrong
-)
-
 // A Side represents the side that an order is on (buy vs. sell)
 //go:generate stringer -type=Side
 type Side uint8
+
+// A Price is how much it costs to buy a good.
+type Price uint32
+
+// A Size is a quantity of a good.
+type Size uint32
 
 const (
 	// Buy is an order to buy things.
@@ -39,223 +19,35 @@ const (
 
 // Market represents a market for buying and selling goods.
 type Market interface {
-	// Determine what good is traded on this market.
-	Good() Good
 	// Post an order to this market.
 	Post(*MarketOrder)
-	// Clear the market.
-	Clear()
+	// Reset the market.
+	Reset()
 	// Get the highest price for unfilled buy orders.
-	Bid() float64
-	// Get the amount available at the bid price.
-	BidSize() Size
+	Bid() Price
 	// Get the lowest price for unfilled sell orders.
-	Ask() float64
-	// Get the amount available at the ask price.
-	AskSize() Size
-	// Get the last trade price on this market.
-	Last() float64
-	// Get the volume of goods traded on this market in the last cycle.
+	Ask() Price
+	// Get the high of the last trading period.
+	High() Price
+	// Get the low of the last trading period.
+	Low() Price
+	// Get the volume of goods traded on this market in the last trading period.
 	Volume() Size
-}
-
-type marketImpl struct {
-	world *World
-	// The type of good that is sold in this market.
-	good    Good
-	orders  []*MarketOrder
-	bid     float64
-	bidSize Size
-	ask     float64
-	askSize Size
-	last    float64
-	volume  Size
 }
 
 // A MarketAgent is an agent that trades in the market, and can be notified of
 // market events.
 type MarketAgent interface {
 	// OnFill is triggered when an order is filled.
-	OnFill(Good, Side, float64, Size, MarketSignal)
-	// OnUnfilled is called when the market is cleared and order has not been
-	// filled.
-	OnUnfilled(Good, Side, float64, Size, MarketSignal)
+	OnFill(Side, Price, Size)
+	// OnUnfilled is called when the market is reset and order has not been filled.
+	OnUnfilled(Side, Size)
 }
 
 // A MarketOrder is an order to trade something in the market for a given price.
 type MarketOrder struct {
-	Price float64
+	Price Price
 	Size  Size
 	Side  Side
 	Owner MarketAgent
-}
-
-// NewMarket constructs a new market for a given good.
-func NewMarket(w *World, g Good) Market {
-	return &marketImpl{w, g, nil, 0.0, 0, 0.0, 0, 0.0, 0}
-}
-
-func (m *marketImpl) Good() Good    { return m.good }
-func (m *marketImpl) Bid() float64  { return m.bid }
-func (m *marketImpl) BidSize() Size { return m.bidSize }
-func (m *marketImpl) Ask() float64  { return m.ask }
-func (m *marketImpl) AskSize() Size { return m.askSize }
-func (m *marketImpl) Last() float64 { return m.last }
-func (m *marketImpl) Volume() Size  { return m.volume }
-
-// Post adds an order to the market. Note that this order will not get filled
-// right away, until the market is cleared.
-func (m *marketImpl) Post(o *MarketOrder) {
-	if o.Size == 0 {
-		return
-	}
-	if o.Price <= 0.0 {
-		return
-	}
-	m.orders = append(m.orders, o)
-}
-
-// Clear clears the market, by determining which orders get filled and which
-// are not. Notifications are sent to the owners of each order.
-func (m *marketImpl) Clear() {
-	// Go through orders in random order.
-	bids := orderMaxHeap{}
-	offers := orderMinHeap{}
-	heap.Init(&bids)
-	heap.Init(&offers)
-
-	type fill struct {
-		buyOwner  MarketAgent
-		sellOwner MarketAgent
-		buyPrice  float64
-		sellPrice float64
-		price     float64
-		size      Size
-	}
-
-	fills := []*fill{}
-	for _, i := range m.world.Rand().Perm(len(m.orders)) {
-		order := m.orders[i]
-
-		switch order.Side {
-		case Buy:
-			if len(offers) == 0 || order.Price < offers[0].Price {
-				heap.Push(&bids, order)
-				continue
-			}
-
-			// Pop sell orders off the heap until we have filled the entire amount.
-			size := order.Size
-			for len(offers) > 0 && order.Price >= offers[0].Price && size > 0 {
-				if offers[0].Size <= size {
-					sell := heap.Pop(&offers).(*MarketOrder)
-					fills = append(fills, &fill{order.Owner, sell.Owner, order.Price, sell.Price, sell.Price, sell.Size})
-					size -= sell.Size
-				} else {
-					sell := offers[0]
-					fills = append(fills, &fill{order.Owner, sell.Owner, order.Price, sell.Price, sell.Price, size})
-					offers[0].Size -= size
-					size = 0
-				}
-			}
-
-			if size > 0 {
-				order.Size = size
-				heap.Push(&bids, order)
-			}
-		case Sell:
-			if len(bids) == 0 || order.Price > bids[0].Price {
-				heap.Push(&offers, order)
-				continue
-			}
-
-			// Pop buy orders off the heap until we have filled the entire amount.
-			size := order.Size
-			for len(bids) > 0 && order.Price <= bids[0].Price && size > 0 {
-				if bids[0].Size <= size {
-					buy := heap.Pop(&bids).(*MarketOrder)
-					fills = append(fills, &fill{buy.Owner, order.Owner, buy.Price, order.Price, buy.Price, buy.Size})
-					size -= buy.Size
-				} else {
-					buy := bids[0]
-					fills = append(fills, &fill{buy.Owner, order.Owner, buy.Price, order.Price, buy.Price, size})
-					bids[0].Size -= size
-					size = 0
-				}
-			}
-
-			if size > 0 {
-				order.Size = size
-				heap.Push(&offers, order)
-			}
-		}
-	}
-
-	// Market is cleared now, send notifications to all agents.
-	// Anything remaining did not get filled, and gets an unfilled notification.
-	// Use this to calculate remaining bid/ask.
-	// All unfilled orders get a weak signal, unless they match the final bid/ask.
-	m.bid = 0.0
-	if len(bids) > 0 {
-		m.bid = bids[0].Price
-		for _, o := range bids {
-			s := SignalWeak
-			if o.Price == m.bid {
-				s = SignalFairUnfilled
-			}
-			o.Owner.OnUnfilled(m.good, Buy, o.Price, o.Size, s)
-		}
-	}
-	m.ask = 0.0
-	if len(offers) > 0 {
-		m.ask = offers[0].Price
-		for _, o := range offers {
-			s := SignalWeak
-			if o.Price == m.ask {
-				s = SignalFairUnfilled
-			}
-			o.Owner.OnUnfilled(m.good, Sell, o.Price, o.Size, s)
-		}
-	}
-
-	// Anything that was filled gets a fill notification.
-	m.volume = 0
-	for _, f := range fills {
-		bs := SignalFair
-		ss := SignalFair
-
-		if f.buyPrice > f.price {
-			bs = SignalStrong
-			ss = SignalWeak
-		} else if f.sellPrice > f.price {
-			bs = SignalWeak
-			ss = SignalStrong
-		}
-		f.buyOwner.OnFill(m.good, Buy, f.price, f.size, bs)
-		f.sellOwner.OnFill(m.good, Sell, f.price, f.size, ss)
-
-		m.volume += f.size
-		m.last = f.price
-	}
-
-	m.bidSize = 0
-	for _, order := range bids {
-		if order.Price == m.bid {
-			m.bidSize += order.Size
-		} else {
-			break
-		}
-	}
-
-	m.askSize = 0
-	for _, order := range offers {
-		if order.Price == m.ask {
-			m.askSize += order.Size
-		} else {
-			break
-		}
-	}
-
-	// Reset the market every cycle.
-	m.orders = nil
 }

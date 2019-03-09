@@ -1,189 +1,60 @@
 package econerra
 
-import (
-	"fmt"
-	"log"
-	"math"
-)
+import "math"
 
-var _ = log.Printf
-
-// FirmID is a unique identifier for a firm.
-type FirmID uint64
-
-// A Firm is a firm in the econerra world.
+// A Firm is an agent responsible for buying labour and producing goods.
 type Firm struct {
-	agent
-
-	id   FirmID
-	good Good
-
-	// Here are some metrics to track.
-	labourDemand Size
+	wage          Price
+	workersHired  Size
+	targetWorkers Size
 }
 
-// FirmOptions are the arguments used to construct a firm.
-type FirmOptions struct {
-	AgentOptions
-
-	// ID is the unique identifier for the firm.
-	ID FirmID
-	// Good is the good that this firm produces.
-	Good Good
-	// InitInventory is the initial inventory that the firm has.
-	InitInventory Size
+// NewFirm creates a new firm with the given production parameters.
+func NewFirm(initialWage Price) *Firm {
+	return &Firm{initialWage, 0, 0}
 }
 
-const (
-	// Exponent for C-D production.
-	labElast = 0.5
-)
+// TargetWorkers gets the number of workers that this firm is trying to hire
+// this period.
+func (f *Firm) TargetWorkers() Size { return f.targetWorkers }
 
-var (
-	// Technology modifier for production function.
-	tech = map[Good]float64{
-		Grain:      40.0,
-		Vegetables: 30.0,
-		Cotton:     30.0,
-		Meat:       8.0,
-		Beer:       10.0,
-		Clothing:   15.0,
-	}
-)
-
-// NewFirm constructs a new firm.
-func NewFirm(w *World, opts FirmOptions) (*Firm, error) {
-	if opts.Good == Labour {
-		return nil, fmt.Errorf("firms can't produce labour")
-	}
-
-	f := &Firm{
-		id:   opts.ID,
-		good: opts.Good,
-	}
-
-	f.agent = *newAgent(w, opts.AgentOptions, f)
-
-	f.inventory[opts.Good] = opts.InitInventory
-
-	return f, nil
-}
-
-// produce produces whatever good this firm needs.
-func (f *Firm) produce() {
-	// Figure out how much we can produce based on the labour we got last round.
-	q := tech[f.good] * math.Pow(float64(f.inventory[Labour]), labElast)
-
-	// For each input good, see if we can produce q with that much.
-	for _, input := range inputGoods[f.good] {
-		maxQ := float64(f.inventory[input.g]) / float64(input.s)
-		if maxQ < q {
-			q = maxQ
+// Act triggers the firm's decision process.
+func (f *Firm) Act(p *Parameters) {
+	if f.targetWorkers > 0 {
+		// We've past the first round, so now do the actual calculation.
+		if f.workersHired < f.targetWorkers {
+			// Didn't hire enough people, offer a better wage than the market.
+			f.wage = p.LabourMarket.High() + p.Increment
+		} else {
+			// Got enough people, lower wages.
+			f.wage -= p.Increment
 		}
 	}
 
-	// We now know how much we can produce. Add that much to our inventory, and
-	// reduce our input stock.
-	q = math.Floor(q)
+	// We've calculated our wage, now give labour demand.
+	target := math.Pow(float64(f.wage)/p.Tech/p.Scale, 1.0/(p.Scale-1.0))
 
-	f.inventory[f.good] += Size(q)
-	for _, input := range inputGoods[f.good] {
-		f.inventory[input.g] -= Size(q) * input.s
+	if profits(p, f.wage, math.Ceil(target)) > profits(p, f.wage, math.Floor(target)) {
+		f.targetWorkers = Size(math.Ceil(target))
+	} else {
+		f.targetWorkers = Size(math.Floor(target))
 	}
+	f.workersHired = 0
+
+	p.LabourMarket.Post(&MarketOrder{f.wage, f.targetWorkers, Buy, f})
 }
 
-// Act causes the firm to make its decisions for this cycle.
-func (f *Firm) Act() {
-	t := tech[f.good]
-	f.agent.act()
-
-	// Based on what we had last round, produce goods for market.
-	f.produce()
-
-	// Reset any variables that should be reset.
-	f.inventory[Labour] = 0
-
-	sellPrice := f.prices[f.good]
-	sumInputPrices := 0.0
-
-	for _, in := range inputGoods[f.good] {
-		sumInputPrices += f.prices[in.g] * float64(in.s)
-	}
-	denom := t * labElast * (sellPrice - sumInputPrices)
-
-	// Post order of labour based on labour demand function.
-	lf := math.Pow(f.prices[Labour]/denom, 1.0/(labElast-1.0))
-	l := f.labour(lf)
-	f.labourDemand = l
-
-	f.world.Market(Labour).Post(&MarketOrder{
-		Price: f.prices[Labour],
-		Size:  l,
-		Side:  Buy,
-		Owner: f,
-	})
-
-	// Post orders for input goods based on input demand function.
-	for _, in := range inputGoods[f.good] {
-		ind := float64(in.s) * t * math.Pow(float64(l), labElast)
-		f.world.Market(in.g).Post(&MarketOrder{
-			Price: f.prices[in.g],
-			// The floor of the input demand always maximizes profit.
-			Size:  Size(math.Floor(ind)) - f.inventory[in.g],
-			Side:  Buy,
-			Owner: f,
-		})
-	}
-
-	// Post order to sell what we produced last round.
-	f.world.Market(f.good).Post(&MarketOrder{
-		Price: f.prices[f.good],
-		Size:  f.inventory[f.good],
-		Side:  Sell,
-		Owner: f,
-	})
+// profits calculates how much profit a firm makes given a wage and target labour.
+func profits(p *Parameters, wage Price, labour float64) float64 {
+	return p.Tech*math.Pow(labour, p.Scale) - float64(wage)*labour
 }
 
-// labour returns the floor or the ceil of the profit-maximizing labour demand.
-func (f *Firm) labour(l float64) Size {
-	cl := math.Ceil(l)
-	fl := math.Floor(l)
-
-	pc := f.profit(cl)
-	pf := f.profit(fl)
-	if pc > pf {
-		return Size(cl)
-	}
-	return Size(fl)
+// OnFill is triggered when the firm hires a worker.
+func (f *Firm) OnFill(side Side, wage Price, size Size) {
+	f.workersHired++
 }
 
-// profit returns the profit for a given labour level.
-func (f *Firm) profit(l float64) float64 {
-	ip := 0.0 // Total cost of inputs.
-	for _, in := range inputGoods[f.good] {
-		ip += float64(f.prices[in.g]) * float64(in.s)
-	}
-	p := float64(f.prices[f.good])
-	w := float64(f.prices[Labour])
-	la := math.Pow(l, labElast)
-	return tech[f.good]*la*(p-ip) - w*l
+// OnUnfilled is triggered if the firm doesn't hire enough workers.
+func (f *Firm) OnUnfilled(Side, Size) {
+	// No need to actually do anything here.
 }
-
-// OnFill is an implementation of MarketAgent.OnFill.
-func (f *Firm) OnFill(g Good, side Side, p float64, s Size, sig MarketSignal) {
-	f.agent.onFill(g, side, p, s, sig)
-}
-
-// OnUnfilled is an implementation of MarketAgent.OnUnfilled.
-func (f *Firm) OnUnfilled(g Good, side Side, p float64, s Size, sig MarketSignal) {
-	f.agent.onUnfilled(g, side, p, s, sig)
-}
-
-// IsBuyer is an implementation of AgentStrategy.IsBuyer.
-func (f *Firm) IsBuyer(g Good) bool {
-	// TODO - some firm types buy input goods
-	return g == Labour
-}
-
-// LabourDemand gives the amount of labour that the firm wanted this cycle.
-func (f *Firm) LabourDemand() Size { return f.labourDemand }
