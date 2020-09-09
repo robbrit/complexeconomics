@@ -1,4 +1,4 @@
-package econerra
+package market
 
 import (
 	"testing"
@@ -32,12 +32,12 @@ func TestMarket(t *testing.T) {
 
 	s := &fakeAgent{}
 
-	m := NewDoubleAuctionMarket()
+	m := NewDoubleAuction()
 
-	m.Post(&MarketOrder{10, 100, Sell, s})
-	m.Post(&MarketOrder{12, 10, Buy, b1})
-	m.Post(&MarketOrder{10, 200, Buy, b2})
-	m.Post(&MarketOrder{8, 1000, Buy, b3})
+	m.Post(&Order{10, 100, Sell, s})
+	m.Post(&Order{12, 10, Buy, b1})
+	m.Post(&Order{10, 200, Buy, b2})
+	m.Post(&Order{8, 1000, Buy, b3})
 
 	m.Reset()
 

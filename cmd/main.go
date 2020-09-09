@@ -5,7 +5,8 @@ import (
 	"math"
 	"math/rand"
 
-	e "github.com/robbrit/econerra"
+	"github.com/robbrit/econerra/agents"
+	"github.com/robbrit/econerra/market"
 )
 
 const (
@@ -20,16 +21,16 @@ const (
 )
 
 type actor interface {
-	Act(p *e.Parameters)
+	Act(p *agents.Parameters)
 }
 
 func main() {
 	log.Printf("Starting simulation...\n")
 
 	var actors []actor
-	mkt := e.NewDoubleAuctionMarket()
+	mkt := market.NewDoubleAuction()
 
-	params := e.Parameters{
+	params := agents.Parameters{
 		Increment:    increment,
 		Tech:         technology,
 		Scale:        scale,
@@ -43,11 +44,11 @@ func main() {
 	log.Printf("Total expected demand: %f", l)
 
 	for i := 0; i < numFirms; i++ {
-		actors = append(actors, e.NewFirm(initWage))
+		actors = append(actors, agents.NewFirm(initWage))
 	}
 
 	for i := 0; i < numWorkers; i++ {
-		actors = append(actors, e.NewWorker(initWage))
+		actors = append(actors, agents.NewWorker(initWage))
 	}
 
 	r := rand.New(rand.NewSource(randSeed))
@@ -59,10 +60,10 @@ func main() {
 		}
 		mkt.Reset()
 
-		demand := e.Size(0)
+		demand := market.Size(0)
 		for _, a := range actors {
 			switch f := a.(type) {
-			case *e.Firm:
+			case *agents.Firm:
 				demand += f.TargetWorkers()
 			}
 		}

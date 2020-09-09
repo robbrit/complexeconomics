@@ -1,10 +1,10 @@
-package econerra
+package market
 
 import (
 	"container/heap"
 )
 
-type doubleAuctionMarket struct {
+type doubleAuction struct {
 	bids       orderMaxHeap
 	offers     orderMinHeap
 	lastHigh   Price
@@ -17,23 +17,23 @@ type doubleAuctionMarket struct {
 	ask        Price
 }
 
-// NewDoubleAuctionMarket constructs a new market for a given good.
-func NewDoubleAuctionMarket() Market {
-	m := &doubleAuctionMarket{}
+// NewDoubleAuction constructs a new market for a given good.
+func NewDoubleAuction() Market {
+	m := &doubleAuction{}
 	m.Reset()
 	return m
 }
 
-func (m *doubleAuctionMarket) Bid() Price   { return m.bid }
-func (m *doubleAuctionMarket) Ask() Price   { return m.ask }
-func (m *doubleAuctionMarket) High() Price  { return m.lastHigh }
-func (m *doubleAuctionMarket) Low() Price   { return m.lastLow }
-func (m *doubleAuctionMarket) Volume() Size { return m.lastVolume }
+func (m *doubleAuction) Bid() Price   { return m.bid }
+func (m *doubleAuction) Ask() Price   { return m.ask }
+func (m *doubleAuction) High() Price  { return m.lastHigh }
+func (m *doubleAuction) Low() Price   { return m.lastLow }
+func (m *doubleAuction) Volume() Size { return m.lastVolume }
 
 // Post sends an order to the market. If this order results in a fill,
 // the owner(s) will be notified. If not, the order will remain open in
 // the market.
-func (m *doubleAuctionMarket) Post(o *MarketOrder) {
+func (m *doubleAuction) Post(o *Order) {
 	if o.Size == 0 {
 		return
 	}
@@ -52,7 +52,7 @@ func (m *doubleAuctionMarket) Post(o *MarketOrder) {
 		size := o.Size
 		for len(m.offers) > 0 && o.Price >= m.offers[0].Price && size > 0 {
 			if m.offers[0].Size <= size {
-				sell := heap.Pop(&m.offers).(*MarketOrder)
+				sell := heap.Pop(&m.offers).(*Order)
 				m.handleFill(o, sell, sell.Price, sell.Size)
 				size -= sell.Size
 			} else {
@@ -77,7 +77,7 @@ func (m *doubleAuctionMarket) Post(o *MarketOrder) {
 		size := o.Size
 		for len(m.bids) > 0 && o.Price <= m.bids[0].Price && size > 0 {
 			if m.bids[0].Size <= size {
-				buy := heap.Pop(&m.bids).(*MarketOrder)
+				buy := heap.Pop(&m.bids).(*Order)
 				m.handleFill(buy, o, buy.Price, buy.Size)
 				size -= buy.Size
 			} else {
@@ -95,7 +95,7 @@ func (m *doubleAuctionMarket) Post(o *MarketOrder) {
 	}
 }
 
-func (m *doubleAuctionMarket) handleFill(buy, sell *MarketOrder, price Price, size Size) {
+func (m *doubleAuction) handleFill(buy, sell *Order, price Price, size Size) {
 	buy.Owner.OnFill(Buy, price, size)
 	sell.Owner.OnFill(Sell, price, size)
 
@@ -108,7 +108,7 @@ func (m *doubleAuctionMarket) handleFill(buy, sell *MarketOrder, price Price, si
 	m.volume += size
 }
 
-func (m *doubleAuctionMarket) Reset() {
+func (m *doubleAuction) Reset() {
 	m.lastLow = m.low
 	m.lastHigh = m.high
 	m.lastVolume = m.volume

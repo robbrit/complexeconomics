@@ -1,7 +1,7 @@
-package econerra
+package market
 
-type orderMinHeap []*MarketOrder
-type orderMaxHeap []*MarketOrder
+type orderMinHeap []*Order
+type orderMaxHeap []*Order
 
 func (h orderMinHeap) Len() int { return len(h) }
 func (h orderMaxHeap) Len() int { return len(h) }
@@ -17,11 +17,11 @@ func (h orderMinHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 func (h orderMaxHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 
 func (h *orderMinHeap) Push(x interface{}) {
-	o := x.(*MarketOrder)
+	o := x.(*Order)
 	*h = append(*h, o)
 }
 func (h *orderMaxHeap) Push(x interface{}) {
-	o := x.(*MarketOrder)
+	o := x.(*Order)
 	*h = append(*h, o)
 }
 
@@ -40,5 +40,5 @@ func (h *orderMaxHeap) Pop() interface{} {
 	return o
 }
 
-func (h orderMinHeap) Peek() *MarketOrder { return h[0] }
-func (h orderMaxHeap) Peek() *MarketOrder { return h[0] }
+func (h orderMinHeap) Peek() *Order { return h[0] }
+func (h orderMaxHeap) Peek() *Order { return h[0] }

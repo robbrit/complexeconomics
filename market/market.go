@@ -1,4 +1,4 @@
-package econerra
+package market
 
 // A Side represents the side that an order is on (buy vs. sell)
 //go:generate stringer -type=Side
@@ -20,7 +20,7 @@ const (
 // Market represents a market for buying and selling goods.
 type Market interface {
 	// Post an order to this market.
-	Post(*MarketOrder)
+	Post(*Order)
 	// Reset the market.
 	Reset()
 	// Get the highest price for unfilled buy orders.
@@ -44,8 +44,8 @@ type MarketAgent interface {
 	OnUnfilled(Side, Size)
 }
 
-// A MarketOrder is an order to trade something in the market for a given price.
-type MarketOrder struct {
+// An Order is an order to trade something in the market for a given price.
+type Order struct {
 	Price Price
 	Size  Size
 	Side  Side
