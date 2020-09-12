@@ -1,5 +1,7 @@
 package market
 
+import "github.com/robbrit/econerra/goods"
+
 // A Side represents the side that an order is on (buy vs. sell)
 //go:generate stringer -type=Side
 type Side uint8
@@ -8,6 +10,7 @@ type Side uint8
 type Price uint32
 
 // A Size is a quantity of a good.
+// TODO(rob): What if it's possible to buy/sell fractional amounts of a good?
 type Size uint32
 
 const (
@@ -33,15 +36,17 @@ type Market interface {
 	Low() Price
 	// Get the volume of goods traded on this market in the last trading period.
 	Volume() Size
+	// Gets the good bought/sold in this market.
+	Good() goods.Good
 }
 
 // A MarketAgent is an agent that trades in the market, and can be notified of
 // market events.
 type MarketAgent interface {
 	// OnFill is triggered when an order is filled.
-	OnFill(Side, Price, Size)
+	OnFill(goods.Good, Side, Price, Size)
 	// OnUnfilled is called when the market is reset and order has not been filled.
-	OnUnfilled(Side, Size)
+	OnUnfilled(goods.Good, Side, Size)
 }
 
 // An Order is an order to trade something in the market for a given price.

@@ -2,6 +2,8 @@ package market
 
 import (
 	"container/heap"
+
+	"github.com/robbrit/econerra/goods"
 )
 
 type doubleAuction struct {
@@ -15,20 +17,24 @@ type doubleAuction struct {
 	volume     Size
 	bid        Price
 	ask        Price
+	good       goods.Good
 }
 
 // NewDoubleAuction constructs a new market for a given good.
-func NewDoubleAuction() Market {
-	m := &doubleAuction{}
+func NewDoubleAuction(good goods.Good) Market {
+	m := &doubleAuction{
+		good: good,
+	}
 	m.Reset()
 	return m
 }
 
-func (m *doubleAuction) Bid() Price   { return m.bid }
-func (m *doubleAuction) Ask() Price   { return m.ask }
-func (m *doubleAuction) High() Price  { return m.lastHigh }
-func (m *doubleAuction) Low() Price   { return m.lastLow }
-func (m *doubleAuction) Volume() Size { return m.lastVolume }
+func (m *doubleAuction) Bid() Price       { return m.bid }
+func (m *doubleAuction) Ask() Price       { return m.ask }
+func (m *doubleAuction) High() Price      { return m.lastHigh }
+func (m *doubleAuction) Low() Price       { return m.lastLow }
+func (m *doubleAuction) Volume() Size     { return m.lastVolume }
+func (m *doubleAuction) Good() goods.Good { return m.good }
 
 // Post sends an order to the market. If this order results in a fill,
 // the owner(s) will be notified. If not, the order will remain open in
@@ -96,8 +102,8 @@ func (m *doubleAuction) Post(o *Order) {
 }
 
 func (m *doubleAuction) handleFill(buy, sell *Order, price Price, size Size) {
-	buy.Owner.OnFill(Buy, price, size)
-	sell.Owner.OnFill(Sell, price, size)
+	buy.Owner.OnFill(m.good, Buy, price, size)
+	sell.Owner.OnFill(m.good, Sell, price, size)
 
 	if price > m.high {
 		m.high = price
@@ -118,10 +124,10 @@ func (m *doubleAuction) Reset() {
 
 	// Clear out all the orders, sending unfilled notifications as needed.
 	for _, order := range m.bids {
-		order.Owner.OnUnfilled(Buy, order.Size)
+		order.Owner.OnUnfilled(m.good, Buy, order.Size)
 	}
 	for _, order := range m.offers {
-		order.Owner.OnUnfilled(Sell, order.Size)
+		order.Owner.OnUnfilled(m.good, Sell, order.Size)
 	}
 
 	if len(m.bids) > 0 {

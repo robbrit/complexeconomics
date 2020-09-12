@@ -2,6 +2,8 @@ package market
 
 import (
 	"testing"
+
+	"github.com/robbrit/econerra/goods"
 )
 
 type fakeAgent struct {
@@ -13,13 +15,13 @@ type fakeAgent struct {
 	unfilledSide Side
 }
 
-func (fa *fakeAgent) OnFill(s Side, p Price, q Size) {
+func (fa *fakeAgent) OnFill(g goods.Good, s Side, p Price, q Size) {
 	fa.fillPrice = p
 	fa.fillSize = q
 	fa.fillSide = s
 }
 
-func (fa *fakeAgent) OnUnfilled(s Side, q Size) {
+func (fa *fakeAgent) OnUnfilled(g goods.Good, s Side, q Size) {
 	fa.unfilledSize = q
 	fa.unfilledSide = s
 }
@@ -32,7 +34,7 @@ func TestMarket(t *testing.T) {
 
 	s := &fakeAgent{}
 
-	m := NewDoubleAuction()
+	m := NewDoubleAuction(goods.Labour)
 
 	m.Post(&Order{10, 100, Sell, s})
 	m.Post(&Order{12, 10, Buy, b1})
