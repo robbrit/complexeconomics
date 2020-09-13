@@ -1,1 +1,12 @@
+# Editor files.
 *.swp
+.vscode
+
+# Generated code
+*_string.go
+
+# Go modules.
+go.sum
+
+# Output.
+output.csv

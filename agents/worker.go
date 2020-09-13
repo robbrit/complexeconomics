@@ -37,46 +37,63 @@ func NewWorker(initialWage, initialPrice market.Price) *Worker {
 }
 
 // Act triggers the worker's decision process.
-func (w *Worker) Act(p *Parameters) {
-	// Step one: adjust prices based on market outcomes last round.
-	w.adjustPrices(p)
-	// Step two: calculate profit-maximizing values of goods to purchase.
+func (w *Worker) Act(p *Parameters, iteration int) {
+	if iteration > 0 {
+		w.adjustPrices(p)
+	}
 	w.chooseTargets(p)
-	// Step three: place orders.
-	w.placeOrders(p)
-	// Step four: reset information about last iteration.
+	// Reset before placing orders, since fills will update our internal counters.
 	w.reset()
+	w.placeOrders(p)
+}
+
+// TargetSupply gives the amount of a good this worker supplies.
+// Workers only supply labour, they don't supply any other good.
+func (w *Worker) TargetSupply(good goods.Good) market.Size {
+	if good == goods.Labour {
+		return 1
+	}
+	return 0
+}
+
+// TargetDemand gives the amount of a good this worker demands.
+func (w *Worker) TargetDemand(good goods.Good) market.Size {
+	if good == goods.Labour {
+		return 0
+	}
+	return w.demand[good]
 }
 
 func (w *Worker) adjustPrices(p *Parameters) {
-	if p.LabourMarket.Volume() == 0 {
-		// This is the first iteration, just use the prices we have.
-		return
-	}
-
 	if w.unemployed {
-		// I was unemployed last round, undercut the market.
-		w.wage = p.LabourMarket.Low() - p.Increment
-	} else if w.wage <= p.LabourMarket.High() {
-		// I was employed last round, ask for a higher price if I can.
+		// I was unemployed last round, hit the bid if it's available.
+		if p.LabourMarket.Bid() > 0 {
+			w.wage = p.LabourMarket.Bid()
+		} else if w.wage-p.Increment > 0 {
+			w.wage -= p.Increment
+		}
+	} else if p.LabourMarket.Bid() > 0 {
+		// I was employed, bump up my wage if there were still people looking for workers.
 		w.wage += p.Increment
 	}
 
 	for _, good := range goods.AllGoods {
 		amountBought := w.purchasesMade[good]
 		demand := w.demand[good]
-
-		price := w.prices[good]
-		market := p.Goods[good].Market
+		mkt := p.Goods[good].Market
 
 		if amountBought < demand {
-			// Didn't get enough, raise price.
-			w.prices[good] += p.Increment
-			// TODO(rob): A more intelligent agent would probably look at the market to make a
-			// decision.
-		} else if price >= market.Low() {
-			// Got enough last time, undercut the market a little bit.
-			w.prices[good] = market.Low() - p.Increment
+			// Didn't get enough, lift the offer if available.
+			if mkt.Ask() > 0 {
+				w.prices[good] = mkt.Ask()
+			} else {
+				w.prices[good] += p.Increment
+			}
+		} else {
+			// Got enough last time, lower my price expectation.
+			if w.prices[good]-p.Increment > 0 {
+				w.prices[good] -= p.Increment
+			}
 		}
 	}
 }
@@ -156,7 +173,6 @@ func (w *Worker) reset() {
 // OnFill is triggered when the worker is hired.
 func (w *Worker) OnFill(good goods.Good, side market.Side, wage market.Price, size market.Size) {
 	if good == goods.Labour {
-		w.wage = wage
 		w.unemployed = false
 	} else {
 		w.purchasesMade[good] += size

@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
+	"fmt"
 	"log"
 	"math/rand"
+	"os"
 
 	"github.com/robbrit/econerra/agents"
 	"github.com/robbrit/econerra/goods"
@@ -10,10 +13,10 @@ import (
 )
 
 const (
-	numWorkers = 5000
-	numCycles  = 40
-	initWage   = 25
-	initPrice  = 10
+	numWorkers = 1000
+	numCycles  = 100
+	initWage   = 100
+	initPrice  = 2
 	increment  = 1
 	randSeed   = 123456
 	elasticity = 0.8
@@ -23,24 +26,26 @@ const (
 
 var (
 	numFirms = map[goods.Good]int{
-		goods.Grain:      100,
-		goods.Vegetables: 100,
-		goods.Meat:       100,
+		goods.Grain:      5,
+		goods.Vegetables: 5,
+		goods.Meat:       15,
 	}
 	technology = map[goods.Good]float64{
-		goods.Grain:      100.0,
-		goods.Vegetables: 70.0,
-		goods.Meat:       10.0,
+		goods.Grain:      1000.0,
+		goods.Vegetables: 800.0,
+		goods.Meat:       500.0,
 	}
 	shares = map[goods.Good]float64{
-		goods.Grain:      1.0,
-		goods.Vegetables: 0.8,
+		goods.Grain:      2.0,
+		goods.Vegetables: 1.0,
 		goods.Meat:       5.0,
 	}
 )
 
 type actor interface {
-	Act(p *agents.Parameters)
+	Act(*agents.Parameters, int)
+	TargetDemand(goods.Good) market.Size
+	TargetSupply(goods.Good) market.Size
 }
 
 func main() {
@@ -77,25 +82,56 @@ func main() {
 
 	r := rand.New(rand.NewSource(randSeed))
 
+	filename := "output.csv"
+	f, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("Unable to open CSV file %s for writing: %s", filename, err)
+	}
+	defer f.Close()
+	w := csv.NewWriter(f)
+
+	w.Write([]string{
+		"Iteration",
+		"Good",
+		"Bid",
+		"Ask",
+		"Low",
+		"High",
+		"Volume",
+		"Supply",
+		"Demand",
+	})
+
 	for i := 0; i < numCycles; i++ {
 		p := r.Perm(len(actors))
 		for _, i := range p {
-			actors[i].Act(&params)
+			actors[i].Act(&params, i)
 		}
 		for _, mkt := range markets {
 			mkt.Reset()
-		}
 
-		/*demand := market.Size(0)
-		for _, a := range actors {
-			switch f := a.(type) {
-			case *agents.Firm:
-				demand += f.TargetWorkers()
+			supply := market.Size(0)
+			demand := market.Size(0)
+			for _, a := range actors {
+				supply += a.TargetSupply(mkt.Good())
+				demand += a.TargetDemand(mkt.Good())
 			}
-		}*/
 
-		// TODO(rob): Dump to CSV file for processing with a more advanced tool like Pandas.
-		//log.Printf("%3d Bid\tAsk\tLow\tHigh\tVolume\tLDemand", i)
-		//log.Printf("%3d %d\t%d\t%d\t%d\t%d\t%d", i, mkt.Bid(), mkt.Ask(), mkt.Low(), mkt.High(), mkt.Volume(), demand)
+			w.Write([]string{
+				fmt.Sprintf("%d", i),
+				fmt.Sprintf("%s", mkt.Good()),
+				fmt.Sprintf("%d", mkt.Bid()),
+				fmt.Sprintf("%d", mkt.Ask()),
+				fmt.Sprintf("%d", mkt.Low()),
+				fmt.Sprintf("%d", mkt.High()),
+				fmt.Sprintf("%d", mkt.Volume()),
+				fmt.Sprintf("%d", supply),
+				fmt.Sprintf("%d", demand),
+			})
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		log.Fatal(err)
 	}
 }

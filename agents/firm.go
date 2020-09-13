@@ -34,46 +34,58 @@ func NewFirm(goodProduced goods.Good, initialWage, initialPrice market.Price) *F
 // this period.
 func (f *Firm) TargetWorkers() market.Size { return f.targetWorkers }
 
+// TargetSupply gives the amount of a good this firm supplies.
+func (f *Firm) TargetSupply(good goods.Good) market.Size {
+	if good == f.goodProduced {
+		return f.targetSales
+	}
+	return 0
+}
+
+// TargetDemand gives the amount of a good this firm demands.
+func (f *Firm) TargetDemand(good goods.Good) market.Size {
+	if good == goods.Labour {
+		return f.targetWorkers
+	}
+	// Firms don't demand anything but labour.
+	return 0
+}
+
 // Act triggers the firm's decision process.
-func (f *Firm) Act(p *Parameters) {
-	// Step one: adjust our prices based on the results of last iteration.
-	f.adjustPrices(p)
-	// Step two: calculate profit maximizing values of quantity and labour based on calculated prices.
+func (f *Firm) Act(p *Parameters, iteration int) {
+	if iteration > 0 {
+		f.adjustPrices(p)
+	}
 	f.chooseTargets(p)
-	// Step three: send out orders to the markets.
-	f.placeOrders(p)
-	// Step four: before we start receiving fills for orders, clear the information we saved from
-	// last iteration.
+	// Reset before placing orders, since fills will update our internal counters.
 	f.reset()
+	f.placeOrders(p)
 }
 
 func (f *Firm) adjustPrices(p *Parameters) {
-	if f.targetSales == 0 {
-		// This will happen in the first iteration, no need to adjust from the initial prices.
-		return
-	}
-
-	goodInfo := p.Goods[f.goodProduced]
-
 	// First adjust the price.
 	if f.salesMade < f.targetSales {
-		// Didn't sell enough, reduce price.
-		f.price -= p.Increment
-		// TODO(rob): A more intelligent agent would probably look at the market to make a
-		// decision.
-	} else if f.price <= goodInfo.Market.High() {
-		// Made enough sales, bump up price to the maximum of what was selling last round.
-		f.price = goodInfo.Market.High() + p.Increment
+		// Didn't sell enough, hit the bid if possible.
+		mkt := p.Goods[f.goodProduced].Market
+		if mkt.Bid() > 0 {
+			f.price = mkt.Bid()
+		} else if f.price-p.Increment > 0 {
+			f.price -= p.Increment
+		}
+	} else {
+		// Made enough sales, raise prices a little bit.
+		f.price += p.Increment
 	}
 
 	// Now adjust the wage.
 	if f.workersHired < f.targetWorkers {
-		// Didn't hire enough people, offer a better wage than the market.
-		f.wage = p.LabourMarket.High() + p.Increment
-	} else if f.wage >= p.LabourMarket.Low() {
-		// Got enough people, lower wages if possible
-		// TODO(rob): A more intelligent agent would probably look at the market to make a
-		// decision.
+		// Didn't hire enough people, lift the offer if available.
+		if p.LabourMarket.Ask() > 0 {
+			f.wage = p.LabourMarket.Ask()
+		} else {
+			f.wage += p.Increment
+		}
+	} else if f.wage-p.Increment > 0 {
 		f.wage -= p.Increment
 	}
 }
@@ -106,6 +118,12 @@ func (f *Firm) chooseTargets(p *Parameters) {
 		// Can only produce if we managed to hire workers last iteration.
 		// Note that this will produce a lag between prices and wages.
 		f.targetSales = market.Size(math.Floor(f.production(p, float64(f.workersHired))))
+	}
+
+	// If profits at this level are negative, don't produce anything.
+	if f.profits(p, float64(f.targetWorkers)) < 0 {
+		f.targetWorkers = 0
+		f.targetSales = 0
 	}
 }
 
